@@ -347,7 +347,7 @@ public class XML {
             if (!tagName.equals(tags.get(pathIdx))) {
                 context = new JSONObject();
                 x.skipPast("/" + tagName);
-                x.nextToken();  // skip the trailling GT
+                x.nextToken();  // skip the trailing GT
                 return false;
             } else if (pathIdx == tags.size() - 1) {
                 pathEnd = true;
@@ -451,26 +451,6 @@ public class XML {
                                 }
                             } else if (myParse(x, jsonObject, tagName, config, pathIdx+1, tags)) {
                                 if (jsonObject != null  && jsonObject.length() > 0) {
-//                                    if (config.getForceList().contains(tagName)) {
-//                                        // Force the value to be an array
-//                                        if (jsonObject.length() == 0) {
-//                                            context.put(tagName, new JSONArray());
-//                                        } else if (jsonObject.length() == 1
-//                                                && jsonObject.opt(config.getcDataTagName()) != null) {
-//                                            context.append(tagName, jsonObject.opt(config.getcDataTagName()));
-//                                        } else {
-//                                            context.append(tagName, jsonObject);
-//                                        }
-//                                    } else {
-//                                        if (jsonObject.length() == 0) {
-//                                            context.accumulate(tagName, "");
-//                                        } else if (jsonObject.length() == 1
-//                                                && jsonObject.opt(config.getcDataTagName()) != null) {
-//                                            context.accumulate(tagName, jsonObject.opt(config.getcDataTagName()));
-//                                        } else {
-//                                            context.accumulate(tagName, jsonObject);
-//                                        }
-//                                    }
                                     String key = tags.get(tags.size()-1);
                                     if (jsonObject.get(key) instanceof  String) {
                                         context.accumulate(key, jsonObject.get(key));

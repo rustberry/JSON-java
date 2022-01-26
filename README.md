@@ -10,6 +10,24 @@ JSON in Java [package org.json]
 
 **[Click here if you just want the latest release jar file.](https://search.maven.org/remotecontent?filepath=org/json/json/20211205/json-20211205.jar)**
 
+# 262P Project
+
+## Milestone 2
+
+The new implemented feature for part 1 of Milestone 2 is called `myParse`, for part 2 it is named `myParse2`.
+
+### Performance gains
+
+In part 1, I skip all the unmatched tags to only parse the required ones. And after parsing it, return immediately.
+
+In part 2, the parsing of the JSON object to be replaced is totally omitted. 
+
+### Unit test
+
+The test file for the newly implemented feature is `M2Test.java`, which tests different variants of the given `JSONPointer` string, including the case of illegal path.
+
+
+
 
 # Overview
 
@@ -39,7 +57,7 @@ Bug fixes, code improvements, and unit test coverage changes are welcome! Becaus
 # Build Instructions
 
 The org.json package can be built from the command line, Maven, and Gradle. The unit tests can be executed from Maven, Gradle, or individually in an IDE e.g. Eclipse.
- 
+
 **Building from the command line**
 
 *Build the class files from the package root directory src/main/java*
@@ -82,7 +100,7 @@ java -cp .:json-java.jar Test (Unix Systems)
 {"abc":"def"}
 ````
 
- 
+
 **Tools to build the package and execute the unit tests**
 
 Execute the test suite with Maven:
