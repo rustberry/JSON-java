@@ -343,11 +343,14 @@ public class XML {
         } else {
             tagName = (String) token;
             // check JSON pointer validity
+            boolean pathEnd = false;
             if (!tagName.equals(tags.get(pathIdx))) {
-                context = null;
-                x.skipPast("/");
-                x.nextToken(); x.nextToken();
+                context = new JSONObject();
+                x.skipPast("/" + tagName);
+                x.nextToken();  // skip the trailling GT
                 return false;
+            } else if (pathIdx == tags.size() - 1) {
+                pathEnd = true;
             }
             token = null;
             jsonObject = new JSONObject();
@@ -412,7 +415,6 @@ public class XML {
                     return false;
 
                 } else if (token == GT) {
-                    boolean isBegining = true;
                     // Content, between <...> and </...>
                     for (;;) {
                         token = x.nextContent();
@@ -422,7 +424,6 @@ public class XML {
                             }
                             return false;
                         } else if (token instanceof String) {
-                            isBegining = false;
                             string = (String) token;
                             if (string.length() > 0) {
                                 if (xmlXsiTypeConverter != null) {
@@ -436,13 +437,20 @@ public class XML {
 
                         } else if (token == LT) {
                             // Nested element's either start or end tag
-                            if (!isBegining) {
+                            if (pathEnd) {
                                 if (parse(x, jsonObject, tagName, config)) {
-                                    context.accumulate(tagName, jsonObject.opt(config.getcDataTagName()));
+                                    if (jsonObject.length() == 0) {
+                                        context.accumulate(tagName, "");
+                                    } else if (jsonObject.length() == 1
+                                            && jsonObject.opt(config.getcDataTagName()) != null) {
+                                        context.accumulate(tagName, jsonObject.opt(config.getcDataTagName()));
+                                    } else {
+                                        context.accumulate(tagName, jsonObject);
+                                    }
                                     return true;
                                 }
                             } else if (myParse(x, jsonObject, tagName, config, pathIdx+1, tags)) {
-                                if (jsonObject != null) {
+                                if (jsonObject != null  && jsonObject.length() > 0) {
 //                                    if (config.getForceList().contains(tagName)) {
 //                                        // Force the value to be an array
 //                                        if (jsonObject.length() == 0) {
@@ -464,7 +472,14 @@ public class XML {
 //                                        }
 //                                    }
                                     String key = tags.get(tags.size()-1);
-                                    context.accumulate(key, jsonObject.get(key));
+                                    if (jsonObject.get(key) instanceof  String) {
+                                        context.accumulate(key, jsonObject.get(key));
+                                    } else {
+                                        JSONObject inner = jsonObject.getJSONObject(key);
+                                        for (String key_s : inner.keySet()) {
+                                            context.accumulate(key_s, inner.get(key_s));
+                                        }
+                                    }
                                     XML.finished = true;
                                     return true;
                                 }
@@ -566,6 +581,24 @@ public class XML {
 
         } else {
             tagName = (String) token;
+            boolean onPath = false;
+            if (tagName.equals(tags.get(pathIdx))) {
+                if (pathIdx == tags.size() - 1) {
+                    String key = tags.get(tags.size()-1);
+                    if (replacement.length() == 0) {
+                        context.accumulate(tagName, "");
+                    } else if (replacement.length() == 1
+                            && replacement.get(key) instanceof String) {
+                        context.accumulate(tagName, replacement.get(key));
+                    } else {
+                        context.accumulate(tagName, replacement);
+                    }
+                    x.skipPast("/" + tagName + ">");
+                    return false;
+                } else {
+                    onPath = true;
+                }
+            }
             token = null;
             jsonObject = new JSONObject();
             boolean nilAttributeFound = false;
@@ -651,7 +684,32 @@ public class XML {
 
                         } else if (token == LT) {
                             // Nested element
-                            if (parse(x, jsonObject, tagName, config)) {
+                            if (onPath) {
+                                if (myParse2(x, jsonObject, tagName, config, pathIdx+1, tags, replacement)) {
+                                    if (config.getForceList().contains(tagName)) {
+                                        // Force the value to be an array
+                                        if (jsonObject.length() == 0) {
+                                            context.put(tagName, new JSONArray());
+                                        } else if (jsonObject.length() == 1
+                                                && jsonObject.opt(config.getcDataTagName()) != null) {
+                                            context.append(tagName, jsonObject.opt(config.getcDataTagName()));
+                                        } else {
+                                            context.append(tagName, jsonObject);
+                                        }
+                                    } else {
+                                        if (jsonObject.length() == 0) {
+                                            context.accumulate(tagName, "");
+                                        } else if (jsonObject.length() == 1
+                                                && jsonObject.opt(config.getcDataTagName()) != null) {
+                                            context.accumulate(tagName, jsonObject.opt(config.getcDataTagName()));
+                                        } else {
+                                            context.accumulate(tagName, jsonObject);
+                                        }
+                                    }
+                                    return false;
+                                }
+                            }
+                            else if (myParse2(x, jsonObject, tagName, config, pathIdx, tags, replacement)) {
                                 if (config.getForceList().contains(tagName)) {
                                     // Force the value to be an array
                                     if (jsonObject.length() == 0) {
@@ -1198,7 +1256,13 @@ public class XML {
         return jo;
     }
 
-
+    /**
+     * Part 2 of Milestone 2
+     * @param reader
+     * @param path
+     * @param replacement
+     * @return
+     */
     public static JSONObject toJSONObject(Reader reader, JSONPointer path, JSONObject replacement) {
         JSONObject jo = new JSONObject();
         XMLTokener x = new XMLTokener(reader);
