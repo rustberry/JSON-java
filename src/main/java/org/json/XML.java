@@ -29,7 +29,9 @@ import java.io.StringReader;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.Arrays;
 import java.util.Iterator;
+import java.util.List;
 
 
 /**
@@ -41,6 +43,8 @@ import java.util.Iterator;
  */
 @SuppressWarnings("boxing")
 public class XML {
+
+    private static boolean finished = false;
 
     /** The Character '&amp;'. */
     public static final Character AMP = '&';
@@ -237,6 +241,230 @@ public class XML {
             if (Character.isWhitespace(string.charAt(i))) {
                 throw new JSONException("'" + string
                         + "' contains a space character.");
+            }
+        }
+    }
+
+    private static boolean myParse(XMLTokener x, JSONObject context, String name, XMLParserConfiguration config,
+                                   int pathIdx, List<String> tags)
+            throws JSONException {
+        char c;
+        int i;
+        JSONObject jsonObject = null;
+        String string;
+        String tagName;
+        Object token;
+        XMLXsiTypeConverter<?> xmlXsiTypeConverter;
+
+        // Test for and skip past these forms:
+        // <!-- ... -->
+        // <! ... >
+        // <![ ... ]]>
+        // <? ... ?>
+        // Report errors for these forms:
+        // <>
+        // <=
+        // <<
+
+        token = x.nextToken();
+
+        // <!
+
+        if (token == BANG) {
+            c = x.next();
+            if (c == '-') {
+                if (x.next() == '-') {
+                    x.skipPast("-->");
+                    return false;
+                }
+                x.back();
+            } else if (c == '[') {
+                token = x.nextToken();
+                if ("CDATA".equals(token)) {
+                    if (x.next() == '[') {
+                        string = x.nextCDATA();
+                        if (string.length() > 0) {
+                            context.accumulate(config.getcDataTagName(), string);
+                        }
+                        return false;
+                    }
+                }
+                throw x.syntaxError("Expected 'CDATA['");
+            }
+            i = 1;
+            do {
+                token = x.nextMeta();
+                if (token == null) {
+                    throw x.syntaxError("Missing '>' after '<!'.");
+                } else if (token == LT) {
+                    i += 1;
+                } else if (token == GT) {
+                    i -= 1;
+                }
+            } while (i > 0);
+            return false;
+        } else if (token == QUEST) {
+
+            // <?
+            x.skipPast("?>");
+            return false;
+        } else if (token == SLASH) {
+
+            // Close tag </
+
+            token = x.nextToken();
+            if (name == null) {
+                throw x.syntaxError("Mismatched close tag " + token);
+            }
+            if (!token.equals(name)) {
+                throw x.syntaxError("Mismatched " + name + " and " + token);
+            }
+            if (x.nextToken() != GT) {
+                throw x.syntaxError("Misshaped close tag");
+            }
+            return true;
+
+        } else if (token instanceof Character) {
+            throw x.syntaxError("Misshaped tag");
+
+            // Open tag <
+
+        } else {
+            tagName = (String) token;
+            // check JSON pointer validity
+            if (!tagName.equals(tags.get(pathIdx))) {
+                context = null;
+                x.skipPast("/");
+                x.nextToken(); x.nextToken();
+                return false;
+            }
+            token = null;
+            jsonObject = new JSONObject();
+            boolean nilAttributeFound = false;
+            xmlXsiTypeConverter = null;
+            for (;;) {
+                if (token == null) {
+                    token = x.nextToken();
+                }
+                // attribute = value
+                if (token instanceof String) {
+                    string = (String) token;
+                    token = x.nextToken();
+                    if (token == EQ) {
+                        token = x.nextToken();
+                        if (!(token instanceof String)) {
+                            throw x.syntaxError("Missing value");
+                        }
+
+                        if (config.isConvertNilAttributeToNull()
+                                && NULL_ATTR.equals(string)
+                                && Boolean.parseBoolean((String) token)) {
+                            nilAttributeFound = true;
+                        } else if(config.getXsiTypeMap() != null && !config.getXsiTypeMap().isEmpty()
+                                && TYPE_ATTR.equals(string)) {
+                            xmlXsiTypeConverter = config.getXsiTypeMap().get(token);
+                        } else if (!nilAttributeFound) {
+                            jsonObject.accumulate(string,
+                                    config.isKeepStrings()
+                                            ? ((String) token)
+                                            : stringToValue((String) token));
+                        }
+                        token = null;
+                    } else {
+                        jsonObject.accumulate(string, "");
+                    }
+
+
+                } else if (token == SLASH) {
+                    // Empty tag <.../>
+                    if (x.nextToken() != GT) {
+                        throw x.syntaxError("Misshaped tag");
+                    }
+                    if (config.getForceList().contains(tagName)) {
+                        // Force the value to be an array
+                        if (nilAttributeFound) {
+                            context.append(tagName, JSONObject.NULL);
+                        } else if (jsonObject.length() > 0) {
+                            context.append(tagName, jsonObject);
+                        } else {
+                            context.put(tagName, new JSONArray());
+                        }
+                    } else {
+                        if (nilAttributeFound) {
+                            context.accumulate(tagName, JSONObject.NULL);
+                        } else if (jsonObject.length() > 0) {
+                            context.accumulate(tagName, jsonObject);
+                        } else {
+                            context.accumulate(tagName, "");
+                        }
+                    }
+                    return false;
+
+                } else if (token == GT) {
+                    boolean isBegining = true;
+                    // Content, between <...> and </...>
+                    for (;;) {
+                        token = x.nextContent();
+                        if (token == null) {
+                            if (tagName != null) {
+                                throw x.syntaxError("Unclosed tag " + tagName);
+                            }
+                            return false;
+                        } else if (token instanceof String) {
+                            isBegining = false;
+                            string = (String) token;
+                            if (string.length() > 0) {
+                                if (xmlXsiTypeConverter != null) {
+                                    jsonObject.accumulate(config.getcDataTagName(),
+                                            stringToValue(string, xmlXsiTypeConverter));
+                                } else {
+                                    jsonObject.accumulate(config.getcDataTagName(),
+                                            config.isKeepStrings() ? string : stringToValue(string));
+                                }
+                            }
+
+                        } else if (token == LT) {
+                            // Nested element's either start or end tag
+                            if (!isBegining) {
+                                if (parse(x, jsonObject, tagName, config)) {
+                                    context.accumulate(tagName, jsonObject.opt(config.getcDataTagName()));
+                                    return true;
+                                }
+                            } else if (myParse(x, jsonObject, tagName, config, pathIdx+1, tags)) {
+                                if (jsonObject != null) {
+//                                    if (config.getForceList().contains(tagName)) {
+//                                        // Force the value to be an array
+//                                        if (jsonObject.length() == 0) {
+//                                            context.put(tagName, new JSONArray());
+//                                        } else if (jsonObject.length() == 1
+//                                                && jsonObject.opt(config.getcDataTagName()) != null) {
+//                                            context.append(tagName, jsonObject.opt(config.getcDataTagName()));
+//                                        } else {
+//                                            context.append(tagName, jsonObject);
+//                                        }
+//                                    } else {
+//                                        if (jsonObject.length() == 0) {
+//                                            context.accumulate(tagName, "");
+//                                        } else if (jsonObject.length() == 1
+//                                                && jsonObject.opt(config.getcDataTagName()) != null) {
+//                                            context.accumulate(tagName, jsonObject.opt(config.getcDataTagName()));
+//                                        } else {
+//                                            context.accumulate(tagName, jsonObject);
+//                                        }
+//                                    }
+                                    String key = tags.get(tags.size()-1);
+                                    context.accumulate(key, jsonObject.get(key));
+                                    XML.finished = true;
+                                    return true;
+                                }
+
+                                return false;
+                            }
+                        }
+                    }
+                } else {
+                    throw x.syntaxError("Misshaped tag");
+                }
             }
         }
     }
@@ -731,6 +959,20 @@ public class XML {
      */
     public static JSONObject toJSONObject(String string, XMLParserConfiguration config) throws JSONException {
         return toJSONObject(new StringReader(string), config);
+    }
+
+    public static JSONObject toJSONObject(Reader  reader, JSONPointer pointer) throws JSONException {
+        JSONObject jo = new JSONObject();
+        XMLTokener x = new XMLTokener(reader);
+        List<String> refs = Arrays.asList(pointer.toString().replaceAll("^/", "")
+                .split("/"));
+        while (x.more() && !XML.finished) {
+            x.skipPast("<");
+            if(x.more()) {
+                myParse(x, jo, null, XMLParserConfiguration.ORIGINAL, 0, refs);
+            }
+        }
+        return jo;
     }
 
     /**
