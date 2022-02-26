@@ -48,6 +48,7 @@ import java.util.Map.Entry;
 import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
  * A JSONObject is an unordered collection of name/value pairs. Its external
@@ -2203,6 +2204,45 @@ public class JSONObject {
     protected static boolean isDecimalNotation(final String val) {
         return val.indexOf('.') > -1 || val.indexOf('e') > -1
                 || val.indexOf('E') > -1 || "-0".equals(val);
+    }
+
+    /**
+     * Convert this JSONObject to a stream.
+     *
+     * The result stream traverses the JSONObject in a depth-first manner.
+     * Each JSONObject returned by the stream retains its hierarchy structure as a node in the
+     * original JSONObject.
+     * @return The stream of this JSONObject and all its sub nodes.
+     */
+    public Stream<JSONObject> toStream() {
+        Stream<JSONObject> stream = Stream.of(this);
+        String[] keys = new String[this.keySet().size()];
+        keys = this.keySet().toArray(keys);
+        for (String key : keys) {
+            Object val = this.get(key);
+            if (val instanceof JSONObject) {
+                stream = Stream.concat(stream, ((JSONObject) val).toStream());
+            } else if (val instanceof JSONArray) {
+                stream = Stream.concat(stream, toStream((JSONArray) val));
+            } else {
+                stream = Stream.concat(stream,
+                        Stream.of(new JSONObject(Collections.singletonMap(key, val))));
+            }
+        }
+        return stream;
+    }
+
+    private Stream<JSONObject> toStream(JSONArray ja) {
+        Stream<JSONObject> stream = Stream.<JSONObject>builder().build();
+        for (int i = 0; i < ja.length(); i++) {
+            Object val = ja.get(i);
+            if (val instanceof JSONObject) {
+                stream = Stream.concat(stream, ((JSONObject) val).toStream());
+            } else {
+                stream = Stream.concat(stream, toStream((JSONArray) val));
+            }
+        }
+        return stream;
     }
 
     /**
