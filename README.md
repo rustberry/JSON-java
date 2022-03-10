@@ -27,6 +27,12 @@ In part 2, the parsing of the JSON object to be replaced is totally omitted.
 The test file for the newly implemented feature is `M2Test.java`, which tests different variants of the given `JSONPointer` string, including the case of illegal path.
 
 
+## Milestone 5
+
+Both the callback style and the `Future` style are implemented.
+
+Test cases are in `M5Test`.
+
 
 
 # Overview

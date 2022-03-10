@@ -32,6 +32,11 @@ import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 
@@ -1489,6 +1494,45 @@ public class XML {
             }
         }
         return jo;
+    }
+
+    /**
+     * Milestone 5, part 1. Async parsing using the callback style. The parsing of XML and consuming
+     * of the parsed JSON are all done in a separate thread.
+     * @param reader The XML source reader.
+     * @param joConsumer The <code>Consumer</code> function to process the parsed <code>JSONObject</code>
+     * @param errorHandler The <code>Consumer</code> function to handle
+     *                     <code>JSONException</code> during parsing
+     */
+    public static void toJSONObject(
+            Reader reader, Consumer<JSONObject> joConsumer, Consumer<JSONException> errorHandler) {
+        Runnable task = () -> {
+            try {
+                JSONObject jo = toJSONObject(reader, XMLParserConfiguration.ORIGINAL);
+                joConsumer.accept(jo);
+            } catch (JSONException e) {
+                errorHandler.accept(e);
+            }
+        };
+        new Thread(task).start();
+    }
+
+    /**
+     * Milestone 5, part 2. Async parsing using the <code>Future</code> style. It's impossible to overload
+	 * a method with different returntype but the same signature; so the method name is changed.
+     * @param reader The XML source reader.
+     * @return A <code>Future</code> that result of parsed <code>JSONObject</code> is available by calling
+     * <code>get</code> on this <code>Future</code>. Note that <code>get</code> is a blocking method.
+     */
+    public static Future<JSONObject> toJSONObjectFuture(Reader reader) {
+        ExecutorService executor = null;
+        try {
+            executor = Executors.newSingleThreadExecutor();
+            Callable<JSONObject> parse = () -> toJSONObject(reader, XMLParserConfiguration.ORIGINAL);
+            return executor.submit(parse);
+        } finally {
+            executor.shutdown();
+        }
     }
 
     /**
